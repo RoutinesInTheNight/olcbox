@@ -10,15 +10,15 @@ jobs:
     steps:
       - name: Checkout olcbox
         uses: actions/checkout@v4
-        # без 'path' → ляжет в $GITHUB_WORKSPACE, т.е. .../work/olcbox/olcbox
+        with:
+          path: repo/olcbox
 
       - name: Checkout olcrtc (native core) as sibling
         uses: actions/checkout@v4
         with:
           repository: openlibrecommunity/olcrtc
-          path: ../olcrtc
+          path: repo/olcrtc
           submodules: recursive
-          # итог: .../work/olcbox/olcrtc — ровно то, что ищет Gradle-таск
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -41,11 +41,12 @@ jobs:
 
       - name: Sanity check paths
         run: |
-          ls -la ../olcrtc
-          ls -la ../olcrtc/mobile
-          ls -la ../olcrtc/internal
+          ls -la repo/olcrtc
+          ls -la repo/olcrtc/mobile
+          ls -la repo/olcrtc/internal
 
       - name: Build unsigned archive
+        working-directory: repo/olcbox
         run: |
           xcodebuild archive \
             -project iosApp/iosApp.xcodeproj \
@@ -59,6 +60,7 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package unsigned IPA
+        working-directory: repo/olcbox
         run: |
           mkdir -p build/Payload
           cp -r build/Olcbox.xcarchive/Products/Applications/*.app build/Payload/
@@ -69,4 +71,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Olcbox-unsigned-ipa
-          path: build/Olcbox-unsigned.ipa
+          path: repo/olcbox/build/Olcbox-unsigned.ipa
