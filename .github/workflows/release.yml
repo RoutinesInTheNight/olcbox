@@ -10,9 +10,9 @@ permissions:
 
 env:
   OLCBOX_VERSION_MAJOR_MINOR: "1.0"
-  # Keep release builds on the matching olcrtc ref until the universal carrier
-  # changes land in olcrtc master.
-  OLCBOX_OLCRTC_REF: "master"
+  # Pin release builds to a reviewed olcrtc commit so nightly rebuilds remain
+  # reproducible even when olcrtc master advances.
+  OLCBOX_OLCRTC_REF: "f616f57bb3a90740f1755922ffeaa7acc5cfe4ed"
   # The alananisimov/olcbox workflow was recreated after 1.0.69, so
   # github.run_number restarted. Run #6 must publish Android versionCode 70.
   OLCBOX_RELEASE_RUN_NUMBER_BASE: "5"
@@ -25,6 +25,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       version_code: ${{ steps.version.outputs.version_code }}
       olcrtc_ref: ${{ steps.version.outputs.olcrtc_ref }}
+      olcrtc_sha: ${{ steps.core.outputs.sha }}
       nightly_tag: ${{ steps.version.outputs.nightly_tag }}
       nightly_title: ${{ steps.version.outputs.nightly_title }}
 
@@ -52,6 +53,19 @@ jobs:
             echo "nightly_title=Nightly Olcbox builds" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout olcrtc once to resolve the release commit
+        uses: actions/checkout@v7
+        with:
+          repository: openlibrecommunity/olcrtc
+          ref: ${{ steps.version.outputs.olcrtc_ref }}
+          path: olcrtc
+          fetch-depth: 1
+          submodules: false
+
+      - name: Resolve exact olcrtc commit
+        id: core
+        run: echo "sha=$(git -C olcrtc rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build-windows:
     needs: release_version
     runs-on: windows-latest
@@ -74,7 +88,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: openlibrecommunity/olcrtc
-          ref: ${{ needs.release_version.outputs.olcrtc_ref }}
+          ref: ${{ needs.release_version.outputs.olcrtc_sha }}
           path: olcrtc
           submodules: recursive
 
@@ -86,7 +100,7 @@ jobs:
           architecture: x64
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache-dependency-path: olcrtc/go.sum
@@ -210,7 +224,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: openlibrecommunity/olcrtc
-          ref: ${{ needs.release_version.outputs.olcrtc_ref }}
+          ref: ${{ needs.release_version.outputs.olcrtc_sha }}
           path: olcrtc
           submodules: recursive
 
@@ -221,7 +235,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache-dependency-path: olcrtc/go.sum
@@ -263,7 +277,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: openlibrecommunity/olcrtc
-          ref: ${{ needs.release_version.outputs.olcrtc_ref }}
+          ref: ${{ needs.release_version.outputs.olcrtc_sha }}
           path: olcrtc
           submodules: recursive
 
@@ -279,7 +293,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache-dependency-path: olcrtc/go.sum
@@ -335,7 +349,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: openlibrecommunity/olcrtc
-          ref: ${{ needs.release_version.outputs.olcrtc_ref }}
+          ref: ${{ needs.release_version.outputs.olcrtc_sha }}
           path: olcrtc
           submodules: recursive
 
@@ -346,7 +360,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache-dependency-path: olcrtc/go.sum
@@ -411,7 +425,25 @@ jobs:
             echo "Android release APK was not found" >&2
             exit 1
           fi
-          cp "${release_apk}" "dist/Olcbox-${OLCBOX_VERSION}-android-release.apk"
+          cp "${release_apk}" "dist/Olcbox-${OLCBOX_VERSION}-android-universal-release.apk"
+
+      - name: Build arm64-v8a production APK
+        working-directory: olcbox
+        run: |
+          export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
+          ./gradlew -Polcbox.version="${OLCBOX_VERSION}" -Polcbox.versionCode="${OLCBOX_VERSION_CODE}" -Polcbox.android.abiFilters=arm64-v8a :androidApp:clean :androidApp:assembleRelease --stacktrace
+
+      - name: Prepare arm64-v8a Android release asset
+        working-directory: olcbox
+        run: |
+          release_apk="$(find androidApp/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          if [ -z "${release_apk}" ]; then
+            echo "Android arm64-v8a release APK was not found" >&2
+            exit 1
+          fi
+          cp "${release_apk}" "dist/Olcbox-${OLCBOX_VERSION}-android-arm64-v8a-release.apk"
 
       - name: Build armeabi-v7a production APK
         working-directory: olcbox
@@ -436,7 +468,8 @@ jobs:
         with:
           name: Olcbox-android-apks
           path: |
-            olcbox/dist/Olcbox-*-android-release.apk
+            olcbox/dist/Olcbox-*-android-universal-release.apk
+            olcbox/dist/Olcbox-*-android-arm64-v8a-release.apk
             olcbox/dist/Olcbox-*-android-armeabi-v7a-release.apk
 
   build-ios:
@@ -459,7 +492,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: openlibrecommunity/olcrtc
-          ref: ${{ needs.release_version.outputs.olcrtc_ref }}
+          ref: ${{ needs.release_version.outputs.olcrtc_sha }}
           path: olcrtc
           submodules: recursive
 
@@ -475,7 +508,7 @@ jobs:
           xcode-version: '^26.0'
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache-dependency-path: olcrtc/go.sum
@@ -552,6 +585,7 @@ jobs:
       OLCBOX_VERSION: ${{ needs.release_version.outputs.version }}
       OLCBOX_VERSION_CODE: ${{ needs.release_version.outputs.version_code }}
       OLCBOX_OLCRTC_REF: ${{ needs.release_version.outputs.olcrtc_ref }}
+      OLCBOX_OLCRTC_SHA: ${{ needs.release_version.outputs.olcrtc_sha }}
       OLCBOX_NIGHTLY_TAG: ${{ needs.release_version.outputs.nightly_tag }}
       OLCBOX_NIGHTLY_TITLE: ${{ needs.release_version.outputs.nightly_title }}
 
@@ -586,9 +620,11 @@ jobs:
             echo "- Source commit: \`${GITHUB_SHA}\`"
             echo "- Source branch: \`${GITHUB_REF_NAME}\`"
             echo "- olcrtc branch: \`${OLCBOX_OLCRTC_REF}\`"
+            echo "- olcrtc commit: \`${OLCBOX_OLCRTC_SHA}\`"
             echo "- App version: \`${OLCBOX_VERSION}\`"
             echo "- Android versionCode: \`${OLCBOX_VERSION_CODE}\`"
-            echo "- Android APKs: universal and \`armeabi-v7a\`"
+            echo "- Android APKs: universal, \`arm64-v8a\`, and \`armeabi-v7a\`"
+            echo "- Compatibility: requires an updated olcrtc server using the authenticated record protocol"
             echo "- Workflow: \`.github/workflows/release.yml\`"
             echo "- Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo

@@ -10,6 +10,7 @@ internal data class OlcRtcCommand(
     val socksPort: Int = PacServer.LOCAL_SOCKS_PORT,
     val socksUser: String = "",
     val socksPass: String = "",
+    val dnsServer: String,
     val dataDir: Path? = null
 ) {
     fun args(configPath: Path): List<String> {
@@ -22,7 +23,6 @@ internal data class OlcRtcCommand(
 
         return buildString {
             appendLine("mode: cnc")
-            appendLine("link: direct")
             appendLine("auth:")
             appendLine("  provider: ${provider.yamlValue()}")
             appendLine("room:")
@@ -31,13 +31,7 @@ internal data class OlcRtcCommand(
             appendLine("  key: ${config.key.yamlValue()}")
             appendLine("net:")
             appendLine("  transport: ${config.transport.yamlValue()}")
-            appendLine("  dns: \"1.1.1.1:53\"")
-            if (config.bypassProvider == LocationConfig.PROVIDER_JITSI) {
-                appendLine("tls:")
-                appendLine("  insecure_skip_verify: true")
-                appendLine("jitsi:")
-                appendLine("  insecure: true")
-            }
+            appendLine("  dns: ${dnsServer.yamlValue()}")
             appendLine("socks:")
             appendLine("  host: ${socksHost.yamlValue()}")
             appendLine("  port: $socksPort")
@@ -59,7 +53,7 @@ internal data class OlcRtcCommand(
                     appendLine("  ack_timeout_ms: 2000")
                 }
             }
-            appendLine("data: ${(dataDir?.toString() ?: "data").yamlValue()}")
+            dataDir?.let { appendLine("data: ${it.toString().yamlValue()}") }
         }
     }
 
