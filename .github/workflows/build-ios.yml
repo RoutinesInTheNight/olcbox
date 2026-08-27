@@ -1,10 +1,10 @@
-name: Build Olcbox iOS IPA
+name: Build Olcbox iOS IPA and macOS DMG
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-ios:
     runs-on: macos-15
 
     steps:
@@ -82,3 +82,52 @@ jobs:
         with:
           name: Olcbox-unsigned-ipa
           path: repo/olcbox/build/Olcbox-unsigned.ipa
+
+  build-macos:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout olcbox
+        uses: actions/checkout@v4
+        with:
+          path: repo/olcbox
+
+      - name: Checkout olcrtc (native core) as sibling
+        uses: actions/checkout@v4
+        with:
+          repository: openlibrecommunity/olcrtc
+          path: repo/olcrtc
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        working-directory: repo/olcbox
+        run: chmod +x gradlew
+
+      - name: Build desktop native assets
+        working-directory: repo/olcbox
+        env:
+          OLCRTC_REPO: ../olcrtc
+        run: ./gradlew :desktopApp:buildDesktopNativeAssets
+
+      - name: Package release DMG
+        working-directory: repo/olcbox
+        env:
+          OLCRTC_REPO: ../olcrtc
+        run: ./gradlew :desktopApp:packageReleaseDmg
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Olcbox-macos-dmg
+          path: repo/olcbox/desktopApp/build/compose/binaries/main-release/dmg/*.dmg
